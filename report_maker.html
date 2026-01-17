@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>학습 리포트 생성기</title>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] },
+            svg: { fontCache: 'global' }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+    <style>
+        @import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css");
+
+        /* === 에디터 UI 레이아웃 (화면 분할) === */
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f2f4f6; /* 토스 스타일: 밝은 회색 배경 */
+            font-family: 'Pretendard', sans-serif;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            color: #333;
+        }
+
+        /* 왼쪽: 컨트롤 패널 */
+        .control-panel {
+            width: 400px;
+            background: #fff;
+            padding: 30px;
+            box-sizing: border-box;
+            overflow-y: auto;
+            border-right: 1px solid #ddd;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            box-shadow: 5px 0 15px rgba(0,0,0,0.05);
+            z-index: 10;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .control-group label {
+            font-weight: 700;
+            font-size: 14px;
+            color: #4e5968; /* 토스 스타일: 부드러운 텍스트 컬러 */
+            margin-bottom: 4px;
+        }
+
+        .control-group input, .control-group textarea, .control-group select {
+            padding: 12px 16px;
+            border: 1px solid #e5e8eb;
+            border-radius: 12px; /* 둥근 모서리 */
+            background-color: #f9fafb;
+            font-family: inherit;
+            font-size: 15px;
+            color: #333;
+            transition: all 0.2s;
+            outline: none;
+        }
+
+        .control-group input:focus, .control-group textarea:focus, .control-group select:focus {
+            border-color: #3182f6; /* 토스 블루 포인트 */
+            background-color: #fff;
+            box-shadow: 0 0 0 2px rgba(49, 130, 246, 0.1);
+        }
+        
+        .control-group textarea {
+            resize: vertical;
+            height: 80px;
+        }
+
+        .btn-download {
+            background-color: #3182f6; /* 토스 블루 */
+            color: white;
+            border: none;
+            padding: 16px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 14px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: 0.2s;
+            box-shadow: 0 4px 10px rgba(49, 130, 246, 0.2);
+        }
+        .btn-download:hover { background-color: #1b64da; transform: translateY(-2px); }
+
+        .btn-secondary {
+            background-color: #fff;
+            color: #333;
+            border: 1px solid #d1d6db;
+            padding: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: 12px;
+            cursor: pointer;
+            flex: 1;
+        }
+        .btn-secondary:hover { background-color: #f2f4f6; }
+
+        /* 오른쪽: 미리보기 영역 */
+        .preview-area {
+            flex: 1;
+            background-color: #f0f2f5;
+            display: flex;
+            overflow: auto;
+            padding: 40px;
+            justify-content: center; /* 중앙 정렬 보조 */
+        }
+
+        /* 모바일/태블릿 반응형 스타일 추가 */
+        @media screen and (max-width: 1024px) {
+            body {
+                flex-direction: column;
+                overflow: auto;
+                height: auto;
+            }
+            .control-panel {
+                width: 100%;
+                height: auto;
+                border-right: none;
+                border-bottom: 1px solid #ddd;
+            }
+            .preview-area {
+                display: block;
+                padding: 20px 0;
+                overflow: hidden;
+            }
+        }
+
+        /* === 여기서부터는 원래 리포트 CSS (스코프 보호) === */
+        :root {
+            --main-color: #d32f2f;
+            --bg-accent: #ffebee;
+            --text-grey: #555;
+            --line-grey: #e0e0e0;
+        }
+
+        .report-card {
+            width: 210mm;
+            height: 297mm;
+            padding: 20mm;
+            box-sizing: border-box;
+            background-color: #ffffff;
+            position: relative;
+            margin: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.05); /* 더 부드러운 그림자 */
+            /* 스케일 조정은 JS로 처리 (반응형) */
+            transform-origin: top center;
+        }
+
+        /* 헤더 */
+        .header {
+            display: flex; justify-content: space-between; align-items: flex-end;
+            border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 25px;
+        }
+        .student-name { font-size: 32px; font-weight: 800; color: #000; }
+        .report-date { font-size: 16px; color: #555; font-weight: 500; }
+
+        .section-wrapper { margin-bottom: 24px; position: relative; }
+        .section-title {
+            font-size: 18px; color: #333; font-weight: 700; margin-bottom: 12px;
+            display: flex; align-items: center;
+        }
+        .section-title::before {
+            content: ''; display: inline-block; width: 6px; height: 6px;
+            background-color: var(--main-color); border-radius: 50%; margin-right: 8px;
+        }
+
+        /* 성적 섹션 */
+        .score-box { margin-bottom: 15px; }
+        .current-score {
+            font-size: 64px; font-weight: 900; color: var(--main-color);
+            line-height: 1; margin-bottom: 15px;
+        }
+        .current-score span { font-size: 24px; color: #777; font-weight: 500; margin-left: 4px; }
+
+        /* 그래프 */
+        .graph-container {
+            width: 100%; height: 140px; position: relative;
+            background-color: #fafafa; border-radius: 4px;
+            padding: 25px 0 10px 0; box-sizing: border-box;
+            border: 1px solid #eee; display: flex; flex-direction: column; justify-content: space-between;
+        }
+        .chart-wrapper { padding: 0 20px; height: 80px; }
+        svg.line-chart { width: 100%; height: 100%; overflow: visible; }
+        .chart-line { fill: none; stroke: var(--main-color); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; transition: all 0.5s ease;}
+        .chart-dot { fill: #fff; stroke: var(--main-color); stroke-width: 2.5; r: 5; transition: all 0.5s ease; }
+        .chart-dot.active { fill: var(--main-color); r: 6; }
+        .chart-label { font-size: 14px; font-weight: 700; fill: var(--main-color); text-anchor: middle; transition: all 0.5s ease; }
+        .chart-label.past { fill: #999; font-weight: 500; }
+
+        .graph-label {
+            display: flex; justify-content: space-between; font-size: 12px; color: #888;
+            padding: 0 5px; margin-top: 5px;
+        }
+        .graph-label span { width: 50px; text-align: center; }
+        .graph-label span.active-date { color: var(--main-color); font-weight: 700; }
+
+        /* 태그 */
+        .weakness-tags { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+        .tag {
+            font-size: 13px; background-color: var(--bg-accent); color: var(--main-color);
+            padding: 5px 12px; border-radius: 15px; font-weight: 600;
+        }
+
+        /* 기타 섹션 (과제, 진도 등은 생략하지 않고 유지) */
+        .homework-header { display: flex; justify-content: space-between; font-size: 16px; font-weight: 600; color: #333; margin-bottom: 8px; }
+        .percent { color: var(--main-color); font-weight: 800; }
+        .progress-bg { width: 100%; height: 12px; background-color: #eee; border-radius: 6px; overflow: hidden; margin-bottom: 12px; }
+        .progress-fill { height: 100%; background-color: var(--main-color); width: 95%; border-radius: 6px; transition: width 0.5s; }
+        .homework-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+        .homework-list li { font-size: 14px; color: #555; display: flex; align-items: center; }
+        .homework-list li::before { content: '✓'; color: var(--main-color); font-weight: bold; font-size: 12px; margin-right: 8px; width: 12px; }
+        .homework-list li.incomplete::before { content: '-'; color: #ccc; }
+
+        /* 이번 주차 과제 리스트 (하이픈 스타일) */
+        .notice-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+        .notice-list li { font-size: 14px; color: #555; display: flex; align-items: flex-start; }
+        .notice-list li::before { content: '-'; color: var(--main-color); font-weight: bold; font-size: 12px; margin-right: 8px; width: 12px; flex-shrink: 0; margin-top: 5px; }
+
+        /* 과제 날짜 표시용 스타일 */
+        .hw-date {
+            font-size: 14px; color: #888; font-weight: 500; margin-left: 8px;
+        }
+
+        /* 진도 */
+        .progress-row { display: flex; gap: 20px; }
+        .progress-item {
+            flex: 1; background-color: #fcfcfc; border: 1px solid #eee; border-left: 4px solid #ddd;
+            border-radius: 4px; padding: 15px;
+        }
+        .progress-item.current {
+            border-left-color: var(--main-color); background-color: #fff;
+            border-top: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee;
+        }
+        .progress-label { font-size: 13px; color: #888; font-weight: 700; margin-bottom: 6px; display: block; }
+        .progress-content { font-size: 15px; color: #333; line-height: 1.4; font-weight: 500; }
+        .book-badge { font-size: 11px; background: #eee; color: #555; padding: 2px 6px; border-radius: 3px; margin-right: 5px; vertical-align: middle; }
+
+        /* 알림장 (새로 추가) */
+        .notice-box {
+            background-color: #f9fafb; /* 토스 스타일: 밝은 회색 배경 */
+            border: 1px solid #e5e8eb;
+            border-radius: 12px;
+            padding: 12px 16px;
+            font-size: 14px;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .footer-area {
+            position: absolute; bottom: 20mm; left: 20mm; right: 20mm;
+        }
+        /* 코멘트 */
+        .comment-box { 
+            background-color: #f2f4f6; color: #333; padding: 20px 25px; border-radius: 20px; 
+            border: none;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .comment-text { font-size: 15px; line-height: 1.4; font-weight: 600; white-space: pre-line; flex: 1; }
+        .teacher-sign { margin-left: 20px; white-space: nowrap; font-size: 14px; font-weight: 800; color: var(--main-color); }
+
+        .percent-badge {
+            display: inline-flex; align-items: center;
+            padding: 5px 14px; border-radius: 30px;
+            background-color: rgba(0, 0, 0, 0.02); /* 더 투명하게 */
+            border: 1px solid rgba(0, 0, 0, 0.05); /* 스티커 경계선 느낌 */
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.02);
+            margin-left: auto;
+            gap: 6px;
+        }
+        .badge-label {
+            font-size: 11px; color: #8b95a1; font-weight: 600; letter-spacing: -0.2px;
+        }
+        .badge-value {
+            font-size: 18px; color: #8b95a1; font-weight: 800; letter-spacing: -0.5px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="control-panel">
+        <h2>📝 리포트 에디터</h2>
+        
+        <div class="control-group">
+            <label>학생 이름</label>
+            <input type="text" id="inputName" value="김재환" oninput="updateText('studentName', this.value)">
+        </div>
+        
+        <div class="control-group">
+            <label>오늘 날짜 (수업일)</label>
+            <div style="display: flex; gap: 5px;">
+                <select id="selYear" onchange="updateAllDates()" style="flex:1;"></select>
+                <select id="selMonth" onchange="updateAllDates()" style="flex:1;"></select>
+                <select id="selDay" onchange="updateAllDates()" style="flex:1;"></select>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>다음 수업 날짜</label>
+            <input type="date" id="inputNextClassDate" onchange="updateAllDates()">
+        </div>
+
+        <div class="control-group">
+            <label>최근 성적 (1~6개, 콤마 구분)</label>
+            <input type="text" id="inputScores" value="" oninput="updateGraphWrapper()">
+            <small style="color:#666; font-size:12px;">입력하지 않으면 공란 처리됩니다.</small>
+        </div>
+
+        <div class="control-group">
+            <label>성적 날짜 라벨 (콤마 구분, 마지막은 오늘 날짜 자동)</label>
+            <input type="text" id="inputDates" value="" oninput="updateGraphWrapper()">
+        </div>
+
+        <div class="control-group">
+            <label>약점 태그 (콤마로 구분)</label>
+            <input type="text" id="inputTags" value="" oninput="updateTags(this.value)">
+        </div>
+
+        <div class="control-group">
+            <label>과제 이행률 (%)</label>
+            <input type="number" id="inputHwPercent" value="" oninput="updateHomework(this.value)">
+        </div>
+
+        <div class="control-group">
+            <label>저번 주차 과제 (줄바꿈 구분, '미완료' 포함 시 체크 해제)</label>
+            <textarea id="inputHwList" oninput="updateHomeworkList(this.value)"></textarea>
+        </div>
+
+        <div class="control-group">
+            <label>현재 진도 (교재 / 단원 / 상세)</label>
+            <input type="text" id="inCurBook" value="수열(대수)" placeholder="교재명" oninput="updateProgress()">
+            <input type="text" id="inCurChap" value="" placeholder="단원명" oninput="updateProgress()">
+            <textarea id="inCurDetail" placeholder="상세 내용" oninput="updateProgress()"></textarea>
+        </div>
+
+        <div class="control-group">
+            <label>다음 진도 (교재 / 단원 / 상세)</label>
+            <input type="text" id="inNextBook" value="수열(대수)" placeholder="교재명" oninput="updateProgress()">
+            <input type="text" id="inNextChap" value="" placeholder="단원명" oninput="updateProgress()">
+            <textarea id="inNextDetail" placeholder="상세 내용" oninput="updateProgress()"></textarea>
+        </div>
+
+        <div class="control-group">
+            <label>이번 주차 과제 (상세)</label>
+            <textarea id="inputNotice" placeholder="예: 수학 익힘책 p.30~40 풀어오기" oninput="updateNoticeList(this.value)"></textarea>
+        </div>
+
+        <div class="control-group">
+            <label>강사 서명</label>
+            <input type="text" id="inputTeacher" value="" placeholder="예: From. 최준화 T" oninput="updateText('teacherSign', this.value)">
+        </div>
+
+        <div class="control-group">
+            <label>한줄 코멘트</label>
+            <textarea id="inputComment" style="height:50px;" oninput="updateText('commentBody', this.value)"></textarea>
+        </div>
+
+        <!-- 파일 불러오기용 hidden input -->
+        <input type="file" id="fileInput" style="display: none;" accept=".json" onchange="loadDataFromFile(this)">
+
+        <div style="display: flex; gap: 10px; margin-top: 10px;">
+            <button class="btn-secondary" onclick="saveDataToFile()">💾 파일로 저장</button>
+            <button class="btn-secondary" onclick="document.getElementById('fileInput').click()">📂 파일 불러오기</button>
+        </div>
+
+        <button class="btn-download" onclick="downloadReport()">📸 이미지로 저장하기</button>
+    </div>
+
+    <div class="preview-area">
+        <div class="report-card" id="reportCard">
+            <div class="header">
+                <div class="student-name"><span id="studentName"></span> 학생</div>
+                <div class="report-date" id="reportDate">2025년 11월 28일 (금)</div>
+            </div>
+
+            <div class="section-wrapper">
+                <div class="section-title">일일 테스트 성적</div>
+                <div class="score-box">
+                    <div class="current-score">
+                        <span id="displayScore" style="font-size:64px; font-weight:900; color:var(--main-color); margin:0;">92</span>
+                        <span>점</span>
+                    </div>
+                    
+                    <div class="graph-container">
+                        <div class="chart-wrapper">
+                            <svg class="line-chart" id="scoreGraph" viewBox="0 0 660 80" preserveAspectRatio="none">
+                                </svg>
+                        </div>
+                        <div class="graph-label" id="dateLabels">
+                            </div>
+                    </div>
+                </div>
+
+                <div class="weakness-tags" id="tagContainer">
+                    </div>
+            </div>
+
+            <div class="section-wrapper">
+                <div class="section-title">수업 진도 현황</div>
+                <div class="progress-row">
+                    <div class="progress-item current">
+                        <span class="progress-label" style="color:var(--main-color);">
+                            현재 진도 <span id="outCurDateText"></span>
+                        </span>
+                        <div class="progress-content">
+                            <span class="book-badge" id="outCurBook">수학I</span>
+                            <span id="outCurChap">03. 지수함수와 로그함수</span><br>
+                            <span id="outCurDetail" style="font-size:13px; color:#666; display:block; margin-top:4px; white-space: pre-line;">
+                                - 지수/로그함수의 그래프 성질
+                            </span>
+                        </div>
+                    </div>
+                    <div class="progress-item">
+                        <span class="progress-label">
+                            다음 진도 <span id="outNextDateText"></span>
+                        </span>
+                        <div class="progress-content">
+                            <span class="book-badge" id="outNextBook">수학I</span>
+                            <span id="outNextChap">04. 로그함수의 활용</span><br>
+                            <span id="outNextDetail" style="font-size:13px; color:#666; display:block; margin-top:4px; white-space: pre-line;">
+                                - 로그방정식과 부등식
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section-wrapper" id="lastHwSection">
+                <div class="section-title" style="display:flex; align-items:center;">
+                    저번 주차 과제
+                    <span id="lastHwDate" class="hw-date"></span>
+                    <span id="hwPercentBadge" class="percent-badge" style="display:none;"></span>
+                </div>
+                <div class="notice-box">
+                    <ul class="homework-list" id="homeworkList">
+                        <!-- JS로 생성 -->
+                    </ul>
+                </div>
+            </div>
+
+            <div class="section-wrapper">
+                <div class="section-title">
+                    이번 주차 과제
+                    <span id="thisHwDate" class="hw-date"></span>
+                </div>
+                <div class="notice-box" id="noticeBox"></div>
+            </div>
+
+            <div class="footer-area">
+                <div class="section-title">선생님의 한 줄 코멘트</div>
+                <div class="comment-box">
+                    <div class="comment-text" id="commentBody"></div>
+                    <div class="teacher-sign" id="teacherSign"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 초기 실행
+        window.onload = function() {
+            initDateSelectors(); // 날짜 선택기 초기화
+            updateLayoutScale(); // 초기 스케일 조정
+            window.addEventListener('resize', updateLayoutScale); // 화면 크기 변경 감지
+            // updateGraphWrapper는 updateAllDates 안에서 호출됨
+            updateTags(document.getElementById('inputTags').value);
+            updateHomework(document.getElementById('inputHwPercent').value);
+            updateHomeworkList(document.getElementById('inputHwList').value);
+            updateProgress(); // 진도 초기화
+            updateNoticeList(document.getElementById('inputNotice').value);
+            updateText('commentBody', document.getElementById('inputComment').value);
+            updateText('teacherSign', document.getElementById('inputTeacher').value);
+        };
+
+        // 단축키 저장 (Ctrl + S)
+        document.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                saveDataToFile();
+            }
+        });
+
+        // 0. 화면 크기에 따른 미리보기 스케일 조정 (모바일/데스크탑 대응)
+        function updateLayoutScale() {
+            const card = document.getElementById('reportCard');
+            const container = document.querySelector('.preview-area');
+            
+            // 리포트 카드의 실제 너비 (210mm)
+            const cardWidth = card.offsetWidth; 
+            const containerWidth = container.clientWidth;
+            const padding = 40; // 좌우 여백
+            
+            let scale = (containerWidth - padding) / cardWidth;
+            
+            // 데스크탑에서는 너무 커지지 않도록 제한 (기존 0.8~0.9 수준 유지)
+            if (window.innerWidth > 1024) {
+                if (scale > 0.85) scale = 0.85;
+            } else {
+                // 모바일에서는 화면 너비에 맞춤 (최대 1)
+                if (scale > 1) scale = 1;
+            }
+            
+            card.style.transform = `scale(${scale})`;
+            
+            // 모바일 레이아웃에서 높이 보정 (transform은 공간을 차지하지 않으므로 강제 높이 지정)
+            if (window.innerWidth <= 1024) {
+                container.style.height = (card.offsetHeight * scale + 100) + 'px';
+            } else {
+                container.style.height = 'auto';
+            }
+        }
+
+        // 1. 단순 텍스트 업데이트
+        function updateText(elementId, value) {
+            const el = document.getElementById(elementId);
+            el.innerText = value;
+            if(window.MathJax) MathJax.typesetPromise([el]).catch(()=>{});
+        }
+
+        // 1-1. 날짜 선택기 초기화 및 업데이트
+        function initDateSelectors() {
+            const yearSel = document.getElementById('selYear');
+            const monthSel = document.getElementById('selMonth');
+            const daySel = document.getElementById('selDay');
+
+            // 년도 (2024 ~ 2030)
+            for(let y=2024; y<=2030; y++) yearSel.add(new Option(y + '년', y));
+            // 월
+            for(let m=1; m<=12; m++) monthSel.add(new Option(m + '월', m));
+            // 일
+            for(let d=1; d<=31; d++) daySel.add(new Option(d + '일', d));
+
+            // 기본값 설정 (2026년 1월 1일)
+            yearSel.value = 2026;
+            monthSel.value = 1;
+            daySel.value = 17;
+
+            // 다음 수업 날짜 기본값 설정
+            document.getElementById('inputNextClassDate').value = '2026-01-22';
+
+            updateAllDates();
+        }
+
+        // 날짜 관련 통합 업데이트 함수
+        function updateAllDates() {
+            const y = document.getElementById('selYear').value;
+            const m = document.getElementById('selMonth').value;
+            const d = document.getElementById('selDay').value;
+            
+            const dateObj = new Date(y, m-1, d);
+            const days = ['일', '월', '화', '수', '목', '금', '토'];
+            const dayName = days[dateObj.getDay()];
+
+            // 1. 헤더 날짜
+            const dateStr = `${y}년 ${m}월 ${d}일 (${dayName})`;
+            document.getElementById('reportDate').innerText = dateStr;
+
+            // 오늘 날짜 단축형 (MM.DD)
+            const todayShort = `${m.padStart(2, '0')}.${d.padStart(2, '0')}`;
+
+            // 2. 다음 수업 날짜
+            const nextDateVal = document.getElementById('inputNextClassDate').value;
+            let nextShort = '미정';
+            if(nextDateVal) {
+                const [ny, nm, nd] = nextDateVal.split('-');
+                nextShort = `${nm.padStart(2, '0')}.${nd.padStart(2, '0')}`;
+            }
+
+            // 3. 진도 및 과제 날짜 매칭
+            document.getElementById('outCurDateText').innerText = `(~${todayShort})`;
+            document.getElementById('outNextDateText').innerText = `(${nextShort}~)`;
+            
+            const lastHwDateEl = document.getElementById('lastHwDate');
+            if(lastHwDateEl) lastHwDateEl.innerText = `(~${todayShort})`;
+
+            const thisHwDateEl = document.getElementById('thisHwDate');
+            if(thisHwDateEl) thisHwDateEl.innerText = `(~${nextShort})`;
+
+            // 4. 그래프 업데이트 (오늘 날짜 전달)
+            updateGraphWrapper(todayShort);
+        }
+
+        function updateGraphWrapper(todayShortStr) {
+            // updateAllDates에서 호출되지 않고 직접 호출될 경우를 대비해 날짜 다시 계산
+            if(!todayShortStr) {
+                const m = document.getElementById('selMonth').value;
+                const d = document.getElementById('selDay').value;
+                todayShortStr = `${m.padStart(2, '0')}.${d.padStart(2, '0')}`;
+            }
+
+            const scoreStr = document.getElementById('inputScores').value;
+            const dateStr = document.getElementById('inputDates').value;
+            updateGraph(scoreStr, dateStr, todayShortStr);
+        }
+
+        // 2. 그래프 그리기 로직 (핵심!)
+        function updateGraph(scoreStr, dateStr, todayShortStr) {
+            // 빈 값 필터링하여 유효한 숫자만 배열로 만듦
+            const scores = scoreStr.split(',').map(s => s.trim()).filter(s => s !== '').map(Number);
+            let dates = dateStr.split(',').map(d => d.trim());
+
+            // 마지막 날짜를 오늘 날짜로 강제 매칭 (데이터가 있을 경우)
+            if (scores.length > 0) {
+                // dates 배열 길이가 scores보다 짧으면 채워넣고, 같거나 길면 마지막을 교체
+                while(dates.length < scores.length) {
+                    dates.push('');
+                }
+                dates[scores.length - 1] = todayShortStr;
+            }
+
+            const svg = document.getElementById('scoreGraph');
+            
+            // 현재 점수(마지막 점수) 업데이트
+            const currentScore = scores.length > 0 ? scores[scores.length - 1] : '-';
+            document.getElementById('displayScore').innerText = currentScore;
+
+            // 그래프 좌표 계산 (ViewBox: 0 0 660 80)
+            // 데이터 개수와 상관없이 6칸 기준 고정 간격 (660 / 5 = 132)
+            const count = scores.length;
+            const step = 132;
+            
+            const points = scores.map((score, index) => {
+                const x = index * step; // 인덱스에 따라 고정 위치
+                // 점수 매핑: 60~100점 사이를 그래프에 표현한다고 가정 (변동폭을 잘 보여주기 위해)
+                // 만약 0~100 절대평가라면 공식을 바꾸면 됨. 여기선 시각적 효과를 위해 조정함.
+                let y = 80 - ((score - 50) * 1.5); 
+                if(y < 5) y = 5; if(y > 75) y = 75; // 그래프 밖으로 나가지 않게
+                return {x, y, score};
+            });
+
+            // Polyline 생성
+            const polylinePoints = points.map(p => `${p.x},${p.y}`).join(' ');
+            
+            let svgContent = `<polyline points="${polylinePoints}" class="chart-line" />`;
+
+            // 점(Circle)과 텍스트(Text) 생성
+            points.forEach((p, idx) => {
+                const isActive = idx === points.length - 1 ? 'active' : '';
+                const isPast = idx === points.length - 1 ? '' : 'past';
+                
+                svgContent += `
+                    <circle cx="${p.x}" cy="${p.y}" class="chart-dot ${isActive}" />
+                    <text x="${p.x}" y="${p.y - 15}" class="chart-label ${isPast}">${p.score}</text>
+                `;
+            });
+
+            svg.innerHTML = svgContent;
+
+            // 날짜 라벨 업데이트 (그래프와 동일한 로직으로 위치 배분)
+            const container = document.getElementById('dateLabels');
+            let html = '';
+            
+            // 항상 6개의 슬롯을 생성하여 위치를 고정 (justify-content: space-between에 대응)
+            for(let i=0; i<6; i++) {
+                const date = (i < count && dates[i]) ? dates[i] : '';
+                const isActive = i === count - 1 ? 'active-date' : '';
+                // flex-box justify-content: space-between을 사용하므로 span만 나열하면 됨
+                html += `<span class="${isActive}">${date}</span>`;
+            }
+            container.innerHTML = html;
+        }
+
+        // 4. 태그 업데이트
+        function updateTags(tagStr) {
+            const tags = tagStr.split(',').map(t => t.trim()).filter(t => t !== '');
+            const container = document.getElementById('tagContainer');
+            
+            let html = '';
+            tags.forEach(tag => {
+                // 해시태그가 없으면 붙여줌
+                const text = tag.startsWith('#') ? tag : '#' + tag.replace(/ /g, '_'); 
+                html += `<span class="tag">${text}</span>`;
+            });
+            container.innerHTML = html;
+        }
+
+        // 5. 과제 이행률 업데이트
+        function updateHomework(percent) {
+            const badge = document.getElementById('hwPercentBadge');
+            if (percent && percent.trim() !== '') {
+                badge.style.display = 'inline-flex';
+                badge.innerHTML = `<span class="badge-label">과제 이행률</span><span class="badge-value">${percent}%</span>`;
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+
+        // 7. 과제 리스트 업데이트
+        function updateHomeworkList(text) {
+            const list = document.getElementById('homeworkList');
+            const section = document.getElementById('lastHwSection');
+
+            if (!text.trim()) {
+                if (section) section.style.display = 'none';
+                list.innerHTML = '';
+                return;
+            }
+            if (section) section.style.display = 'block';
+
+            const lines = text.split('\n');
+            let html = '';
+            
+            lines.forEach(line => {
+                if(!line.trim()) return;
+                // '미완료' 텍스트가 포함되어 있으면 incomplete 클래스 추가
+                const isIncomplete = line.includes('미완료');
+                // '미완료' 텍스트 유지
+                let displayText = line.trim();
+                
+                const className = isIncomplete ? 'incomplete' : '';
+                html += `<li class="${className}">${displayText}</li>`;
+            });
+            list.innerHTML = html;
+            if(window.MathJax) MathJax.typesetPromise([list]).catch(()=>{});
+        }
+
+        // 7-1. 이번 주차 과제 리스트 업데이트 (하이픈 스타일)
+        function updateNoticeList(text) {
+            const box = document.getElementById('noticeBox');
+            const lines = text.split('\n');
+            let html = '<ul class="notice-list">';
+            
+            lines.forEach(line => {
+                if(!line.trim()) return;
+                html += `<li>${line.trim()}</li>`;
+            });
+            html += '</ul>';
+            box.innerHTML = html;
+            if(window.MathJax) MathJax.typesetPromise([box]).catch(()=>{});
+        }
+
+        // 8. 진도 현황 업데이트
+        function updateProgress() {
+            // 날짜는 updateAllDates()에서 처리함
+
+            document.getElementById('outCurBook').innerText = document.getElementById('inCurBook').value;
+            document.getElementById('outCurChap').innerText = document.getElementById('inCurChap').value;
+            document.getElementById('outCurDetail').innerText = document.getElementById('inCurDetail').value;
+
+            document.getElementById('outNextBook').innerText = document.getElementById('inNextBook').value;
+            document.getElementById('outNextChap').innerText = document.getElementById('inNextChap').value;
+            document.getElementById('outNextDetail').innerText = document.getElementById('inNextDetail').value;
+
+            if(window.MathJax) {
+                const elements = [
+                    document.getElementById('outCurBook'), document.getElementById('outCurChap'), document.getElementById('outCurDetail'),
+                    document.getElementById('outNextBook'), document.getElementById('outNextChap'), document.getElementById('outNextDetail')
+                ];
+                MathJax.typesetPromise(elements).catch(()=>{});
+            }
+        }
+
+        // 6. 이미지 저장 (html2canvas 사용)
+        function downloadReport() {
+            const element = document.getElementById('reportCard');
+            // 스케일 복구 후 캡처 (고해상도를 위해)
+            const originalTransform = element.style.transform;
+            element.style.transform = "none";
+            
+            html2canvas(element, { 
+                scale: 4, // 4배율 (초고화질, 인쇄용 수준)
+                useCORS: true,
+                backgroundColor: "#ffffff",
+                windowWidth: 2000, // 캡처 시 데스크탑 너비 기준 렌더링 (줄바꿈 깨짐 방지)
+                imageTimeout: 0 // 이미지 로딩 대기 시간 제한 해제
+            }).then(canvas => {
+                const link = document.createElement('a');
+                const name = document.getElementById('inputName').value;
+                link.download = `${name}_학습리포트.png`;
+                link.href = canvas.toDataURL();
+                link.click();
+                
+                // 캡처 후 다시 원래대로 축소
+                element.style.transform = originalTransform;
+            });
+        }
+
+        // 9. 데이터 파일 저장 및 불러오기
+        function saveDataToFile() {
+            const data = {
+                inputName: document.getElementById('inputName').value,
+                selYear: document.getElementById('selYear').value,
+                selMonth: document.getElementById('selMonth').value,
+                selDay: document.getElementById('selDay').value,
+                inputScores: document.getElementById('inputScores').value,
+                inputDates: document.getElementById('inputDates').value,
+                inputTags: document.getElementById('inputTags').value,
+                inputHwPercent: document.getElementById('inputHwPercent').value,
+                inputHwList: document.getElementById('inputHwList').value,
+                inputNextClassDate: document.getElementById('inputNextClassDate').value,
+                inCurBook: document.getElementById('inCurBook').value,
+                inCurChap: document.getElementById('inCurChap').value,
+                inCurDetail: document.getElementById('inCurDetail').value,
+                inNextBook: document.getElementById('inNextBook').value,
+                inNextChap: document.getElementById('inNextChap').value,
+                inNextDetail: document.getElementById('inNextDetail').value,
+                inputNotice: document.getElementById('inputNotice').value,
+                inputTeacher: document.getElementById('inputTeacher').value,
+                inputComment: document.getElementById('inputComment').value
+            };
+            
+            const now = new Date();
+            const m = String(now.getMonth() + 1).padStart(2, '0');
+            const d = String(now.getDate()).padStart(2, '0');
+            const h = String(now.getHours()).padStart(2, '0');
+            const min = String(now.getMinutes()).padStart(2, '0');
+            
+            const jsonStr = JSON.stringify(data, null, 2);
+            const blob = new Blob([jsonStr], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            
+            const link = document.createElement('a');
+            const name = data.inputName || 'student';
+            link.download = `${name} - ${m}-${d}-${h}${min}.json`;
+            link.href = url;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        function loadDataFromFile(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                
+                    // 각 필드 값 복원 (없는 필드는 건너뜀 -> 호환성 확보)
+                    for (const key in data) {
+                        if (document.getElementById(key)) {
+                            document.getElementById(key).value = data[key];
+                        }
+                    }
+                
+                    // 화면 업데이트 트리거
+                    updateAllDates();
+                    updateTags(document.getElementById('inputTags').value);
+                    updateHomeworkList(document.getElementById('inputHwList').value);
+                    updateProgress();
+                    updateNoticeList(document.getElementById('inputNotice').value);
+                    updateText('commentBody', document.getElementById('inputComment').value);
+                    updateText('teacherSign', document.getElementById('inputTeacher').value);
+                    updateText('studentName', document.getElementById('inputName').value);
+                    
+                    alert('데이터를 성공적으로 불러왔습니다.');
+                } catch (e) {
+                    console.error("데이터 로드 중 오류 발생:", e);
+                    alert('데이터를 불러오는 중 오류가 발생했습니다. 파일 형식이 올바르지 않을 수 있습니다.');
+                }
+            };
+            reader.readAsText(file);
+            input.value = ''; // 초기화하여 같은 파일 다시 선택 가능하게 함
+        }
+    </script>
+</body>
+</html>
